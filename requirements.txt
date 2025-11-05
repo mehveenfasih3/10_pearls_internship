@@ -1,0 +1,12 @@
+requests
+pandas
+hopsworks
+scikit-learn
+joblib
+dotenv
+datetime
+numpy
+matplotlib
+seaborn
+pyarrow
+hopsworks[python]==4.2.*
