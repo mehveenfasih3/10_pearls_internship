@@ -36,7 +36,7 @@ def fetch_data_from_hopsworks(feature_group_name="air_quality_features", version
 
         print("\n🔐 Connecting to Hopsworks...")
         project = hopsworks.login(
-            project="pollution_cicd",
+            project="mehveenf",
             api_key_value=os.getenv("HOPSWORKS_API_KEY")
         )
         print(f"   ✓ Connected to project: {project.name}")
