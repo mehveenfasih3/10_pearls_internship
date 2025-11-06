@@ -333,7 +333,7 @@ def register_models(results, data):
         # Connect to Hopsworks
         print("\n🔐 Connecting to Hopsworks...")
         project = hopsworks.login(
-            project="pollution_cicd",
+            project="mehveenf",
             api_key_value=os.getenv("HOPSWORKS_API_KEY")
         )
         mr = project.get_model_registry()
