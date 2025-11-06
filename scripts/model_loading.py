@@ -433,7 +433,7 @@ if __name__ == "__main__":
 
     # Step 1: Fetch data
     df = fetch_data_from_hopsworks(
-        feature_group_name="karachi_air_quality_features",
+        feature_group_name="air_quality_features",
         version=1
     )
 
