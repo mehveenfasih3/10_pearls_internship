@@ -1227,7 +1227,7 @@ def complete_eda_and_upload_pipeline(df_processed, selected_features_count=20):
     # Step 4: Upload to Hopsworks
     feature_group = upload_to_hopsworks(
         df_final,
-        feature_group_name="karachi_air_quality_features",
+        feature_group_name="air_quality_features",
         version=1
     )
 
