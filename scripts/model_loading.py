@@ -23,7 +23,7 @@ warnings.filterwarnings('ignore')
 # STEP 1: FETCH DATA FROM HOPSWORKS
 # ============================================================================
 
-def fetch_data_from_hopsworks(feature_group_name="karachi_air_quality_features", version=1):
+def fetch_data_from_hopsworks(feature_group_name="air_quality_features", version=1):
     """
     Fetch data from Hopsworks Feature Store
     """
