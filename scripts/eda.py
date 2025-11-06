@@ -902,7 +902,7 @@ def validate_dataframe_for_hopsworks(df):
 
 
 # Update the upload function to use validation
-def upload_to_hopsworks(df, feature_group_name="karachi_air_quality_features", version=1):
+def upload_to_hopsworks(df, feature_group_name="air_quality_features", version=1):
     """
     Upload processed data to Hopsworks Feature Store
 
@@ -932,7 +932,7 @@ def upload_to_hopsworks(df, feature_group_name="karachi_air_quality_features", v
         # # Login to Hopsworks
         # project = hopsworks.login(api_key_value=os.getenv("HOPSWORKS_API_KEY"))
         project = hopsworks.login(
-            project="pollution_cicd",
+            project="mehveenf",
             api_key_value=os.getenv("HOPSWORKS_API_KEY")
          )
         print(f"   ✓ Connected to project: {project.name}")
@@ -1045,7 +1045,7 @@ def upload_to_hopsworks(df, feature_group_name="karachi_air_quality_features", v
         return None
 
 
-def fetch_from_hopsworks(feature_group_name="karachi_air_quality_features", version=1):
+def fetch_from_hopsworks(feature_group_name="air_quality_features", version=1):
     """
     Fetch data from Hopsworks Feature Store for model training
 
@@ -1073,7 +1073,7 @@ def fetch_from_hopsworks(feature_group_name="karachi_air_quality_features", vers
         # Login to Hopsworks
         # project = hopsworks.login(api_key_value=os.getenv("HOPSWORKS_API_KEY"))
         project = hopsworks.login(
-            project="pollution_cicd",
+            project="mehveenf",
             api_key_value=os.getenv("HOPSWORKS_API_KEY")
          )
         print(f"   ✓ Connected to project: {project.name}")
