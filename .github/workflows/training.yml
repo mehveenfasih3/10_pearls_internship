@@ -1,4 +1,4 @@
-name: Retrain AQI Models
+name: Model Training For AQI prediction
 on:
   schedule:
     - cron: "45 */6 * * *"
