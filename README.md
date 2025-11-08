@@ -79,10 +79,6 @@ Model accuracy was measured using the **R² Score**, indicating how effectively 
 **Conclusion:**  
 Gradient Boosting outperformed other models, making it the optimal choice for **real-time AQI forecasting**.
 
-![Model Performance Comparison](6c39632f-8aa9-4320-a810-b7f0261ae858.png)
-
----
-
 ## **7. Project Outcomes**
 - Fully automated end-to-end pipeline: data fetching → cleaning → training → storage.  
 - Continuous model updates with every scheduled workflow.  
