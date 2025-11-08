@@ -366,7 +366,7 @@ if __name__ == "__main__":
 
     # Or use the sample data from the image
 
-    sample_data = pd.read_csv("data/2_years.csv")
+    sample_data = pd.read_csv("data/karachi_2_years.csv")
     df = pd.DataFrame(sample_data)
 
     # Run pipeline
