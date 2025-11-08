@@ -1,5 +1,5 @@
 
-name: Fetch Pollution Data
+name: Fetch real time Data
 
 on:
   schedule:
