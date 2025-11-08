@@ -37,7 +37,7 @@ jobs:
       run: |
         git config --local user.email "github-actions[bot]@users.noreply.github.com"
         git config --local user.name "github-actions[bot]"
-        git add data/2_years.csv
+        git add data/karachi_2_years.csv
         git diff --quiet && git diff --staged --quiet || (
           git commit -m "Update pollution data - $(date -u +'%Y-%m-%d %H:%M UTC')" &&
           git push
