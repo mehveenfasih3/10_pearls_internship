@@ -19,10 +19,6 @@ import joblib
 import warnings
 warnings.filterwarnings('ignore')
 
-# ============================================================================
-# STEP 1: FETCH DATA FROM HOPSWORKS
-# ============================================================================
-
 def fetch_data_from_hopsworks(feature_group_name="air_quality_features", version=1):
     """
     Fetch data from Hopsworks Feature Store
@@ -34,21 +30,21 @@ def fetch_data_from_hopsworks(feature_group_name="air_quality_features", version
     try:
         import hopsworks
 
-        print("\n🔐 Connecting to Hopsworks...")
+        print("\n Connecting to Hopsworks...")
         project = hopsworks.login(
             project="mehveenf",
             api_key_value=os.getenv("HOPSWORKS_API_KEY")
         )
-        print(f"   ✓ Connected to project: {project.name}")
+        print(f"    Connected to project: {project.name}")
 
         fs = project.get_feature_store()
 
-        print(f"\n📥 Fetching feature group: {feature_group_name} (v{version})")
+        print(f"\n Fetching feature group: {feature_group_name} (v{version})")
         feature_group = fs.get_feature_group(name=feature_group_name, version=version)
 
         df = feature_group.read()
 
-        print(f"\n✅ DATA RETRIEVED SUCCESSFULLY!")
+        print(f"\n DATA RETRIEVED SUCCESSFULLY!")
         print(f"   • Shape: {df.shape}")
         print(f"   • Columns: {len(df.columns)}")
         print("="*70)
@@ -56,14 +52,11 @@ def fetch_data_from_hopsworks(feature_group_name="air_quality_features", version
         return df
 
     except Exception as e:
-        print(f"\n❌ ERROR: {str(e)}")
+        print(f"\n ERROR: {str(e)}")
         print("   Please check your API key and feature group name")
         return None
 
 
-# ============================================================================
-# STEP 2: PREPARE DATA FOR TRAINING
-# ============================================================================
 
 def prepare_data(df, target='aqi'):
     """
@@ -75,7 +68,7 @@ def prepare_data(df, target='aqi'):
 
     # Check if target exists
     if target not in df.columns:
-        print(f"❌ ERROR: Target column '{target}' not found!")
+        print(f" ERROR: Target column '{target}' not found!")
         print(f"Available columns: {df.columns.tolist()}")
         return None
 
@@ -89,7 +82,7 @@ def prepare_data(df, target='aqi'):
     # Get feature columns
     feature_cols = [col for col in df.columns if col not in exclude_cols]
 
-    print(f"\n📊 Dataset Information:")
+    print(f"\n Dataset Information:")
     print(f"   • Total rows: {len(df)}")
     print(f"   • Feature columns: {len(feature_cols)}")
     print(f"   • Target column: {target}")
@@ -99,10 +92,10 @@ def prepare_data(df, target='aqi'):
     categorical_cols = df_features.select_dtypes(include=['object']).columns.tolist()
 
     if categorical_cols:
-        print(f"\n🔄 Encoding {len(categorical_cols)} categorical features...")
+        print(f"\n Encoding {len(categorical_cols)} categorical features...")
         df_features = pd.get_dummies(df_features, columns=categorical_cols, drop_first=True)
         feature_cols = df_features.columns.tolist()
-        print(f"   ✓ Features after encoding: {len(feature_cols)}")
+        print(f"    Features after encoding: {len(feature_cols)}")
 
     # Prepare X and y
     X = df_features.values
@@ -111,8 +104,8 @@ def prepare_data(df, target='aqi'):
     print(f"\n   • Target range: [{y.min():.2f}, {y.max():.2f}]")
     print(f"   • Target mean: {y.mean():.2f}")
 
-    # Train/Val/Test split (70/10/20)
-    print(f"\n✂️  Splitting data...")
+    # Train/Val/Test split 
+    print(f"\n  Splitting data...")
     X_temp, X_test, y_temp, y_test = train_test_split(
         X, y, test_size=0.2, random_state=42
     )
@@ -125,14 +118,14 @@ def prepare_data(df, target='aqi'):
     print(f"   • Test:       {len(X_test):5d} samples ({len(X_test)/len(X)*100:.1f}%)")
 
     # Feature scaling
-    print(f"\n⚖️  Scaling features...")
+    print(f"\n  Scaling features...")
     scaler = StandardScaler()
     X_train = scaler.fit_transform(X_train)
     X_val = scaler.transform(X_val)
     X_test = scaler.transform(X_test)
-    print("   ✓ Features scaled")
+    print("    Features scaled")
 
-    print("\n✅ DATA PREPARATION COMPLETE")
+    print("\n DATA PREPARATION COMPLETE")
     print("="*70)
 
     return {
@@ -147,14 +140,8 @@ def prepare_data(df, target='aqi'):
     }
 
 
-# ============================================================================
-# STEP 3: TRAIN MODELS
-# ============================================================================
-
 def train_models(data):
-    """
-    Train 3 best ML models for AQI prediction
-    """
+  
     print("\n" + "="*70)
     print("TRAINING 3 ML MODELS")
     print("="*70)
@@ -162,7 +149,7 @@ def train_models(data):
     results = {}
 
     # Model 1: Random Forest
-    print("\n📊 MODEL 1: Random Forest Regressor")
+    print("\n MODEL 1: Random Forest Regressor")
     print("-" * 70)
     start = datetime.now()
 
@@ -197,12 +184,12 @@ def train_models(data):
         'training_time': (datetime.now() - start).total_seconds()
     }
 
-    print(f"✓ Training time: {results['random_forest']['training_time']:.2f}s")
-    print(f"✓ Test R²: {results['random_forest']['test_r2']:.4f}")
-    print(f"✓ Test RMSE: {results['random_forest']['test_rmse']:.4f}")
+    print(f" Training time: {results['random_forest']['training_time']:.2f}s")
+    print(f" Test R²: {results['random_forest']['test_r2']:.4f}")
+    print(f" Test RMSE: {results['random_forest']['test_rmse']:.4f}")
 
     # Model 2: Gradient Boosting
-    print("\n📊 MODEL 2: Gradient Boosting Regressor")
+    print("\n MODEL 2: Gradient Boosting Regressor")
     print("-" * 70)
     start = datetime.now()
 
@@ -237,12 +224,12 @@ def train_models(data):
         'training_time': (datetime.now() - start).total_seconds()
     }
 
-    print(f"✓ Training time: {results['gradient_boosting']['training_time']:.2f}s")
-    print(f"✓ Test R²: {results['gradient_boosting']['test_r2']:.4f}")
-    print(f"✓ Test RMSE: {results['gradient_boosting']['test_rmse']:.4f}")
+    print(f" Training time: {results['gradient_boosting']['training_time']:.2f}s")
+    print(f" Test R²: {results['gradient_boosting']['test_r2']:.4f}")
+    print(f" Test RMSE: {results['gradient_boosting']['test_rmse']:.4f}")
 
     # Model 3: XGBoost
-    print("\n📊 MODEL 3: XGBoost Regressor")
+    print("\n MODEL 3: XGBoost Regressor")
     print("-" * 70)
     start = datetime.now()
 
@@ -279,9 +266,9 @@ def train_models(data):
         'training_time': (datetime.now() - start).total_seconds()
     }
 
-    print(f"✓ Training time: {results['xgboost']['training_time']:.2f}s")
-    print(f"✓ Test R²: {results['xgboost']['test_r2']:.4f}")
-    print(f"✓ Test RMSE: {results['xgboost']['test_rmse']:.4f}")
+    print(f" Training time: {results['xgboost']['training_time']:.2f}s")
+    print(f" Test R²: {results['xgboost']['test_r2']:.4f}")
+    print(f" Test RMSE: {results['xgboost']['test_rmse']:.4f}")
 
     # Model comparison
     print("\n" + "="*70)
@@ -303,24 +290,17 @@ def train_models(data):
     print("\n" + comparison.to_string(index=False))
 
     best_model = comparison.iloc[0]['Model']
-    print(f"\n🏆 BEST MODEL: {best_model}")
+    print(f"\n BEST MODEL: {best_model}")
     print(f"   R² = {comparison.iloc[0]['R² Score']:.4f}")
     print(f"   RMSE = {comparison.iloc[0]['RMSE']:.4f}")
 
-    print("\n✅ ALL MODELS TRAINED!")
+    print("\n ALL MODELS TRAINED!")
     print("="*70)
 
     return results, comparison
 
-
-# ============================================================================
-# STEP 4: REGISTER MODELS IN HOPSWORKS
-# ============================================================================
-
 def register_models(results, data):
-    """
-    Register all trained models in Hopsworks Model Registry
-    """
+  
     print("\n" + "="*70)
     print("REGISTERING MODELS IN HOPSWORKS")
     print("="*70)
@@ -331,7 +311,7 @@ def register_models(results, data):
         from hsml.model_schema import ModelSchema
 
         # Connect to Hopsworks
-        print("\n🔐 Connecting to Hopsworks...")
+        print("\n Connecting to Hopsworks...")
         project = hopsworks.login(
             project="mehveenf",
             api_key_value=os.getenv("HOPSWORKS_API_KEY")
@@ -341,7 +321,7 @@ def register_models(results, data):
         registered = {}
 
         for model_key, model_data in results.items():
-            print(f"\n📤 Registering: {model_data['name']}")
+            print(f"\n Registering: {model_data['name']}")
             print("-" * 70)
 
             # Create model directory
@@ -363,9 +343,9 @@ def register_models(results, data):
                     'test_mape': model_data['test_mape']
                 }, f, indent=2)
 
-            print(f"   ✓ Saved artifacts to {model_dir}/")
+            print(f"    Saved artifacts to {model_dir}/")
 
-            # Create model schema with proper format (list of dicts with 'name' and 'type')
+          
             input_schema_dict = [{"name": str(feat), "type": "double"} for feat in data['feature_names']]
             output_schema_dict = [{"name": "aqi", "type": "double"}]
 
@@ -374,7 +354,7 @@ def register_models(results, data):
             model_schema = ModelSchema(input_schema=input_schema, output_schema=output_schema)
 
             # Register in Hopsworks
-            print(f"   ⏳ Uploading to Hopsworks Model Registry...")
+            print(f"    Uploading to Hopsworks Model Registry...")
             aqi_model = mr.python.create_model(
                 name=f"aqi_{model_key}",
                 metrics={
@@ -390,44 +370,29 @@ def register_models(results, data):
 
             aqi_model.save(model_dir)
 
-            print(f"   ✓ Registered in Hopsworks as 'aqi_{model_key}'")
-            print(f"   ✓ Version: {aqi_model.version}")
+            print(f"    Registered in Hopsworks as 'aqi_{model_key}'")
+            print(f"    Version: {aqi_model.version}")
 
             registered[model_key] = aqi_model
 
-        print("\n✅ ALL MODELS REGISTERED SUCCESSFULLY!")
+        print("\n ALL MODELS REGISTERED SUCCESSFULLY!")
         print("="*70)
 
         return registered
 
     except Exception as e:
-        print(f"\n❌ ERROR: {str(e)}")
+        print(f"\n ERROR: {str(e)}")
         import traceback
         traceback.print_exc()
         return None
 
 
-# ============================================================================
-# MAIN EXECUTION
-# ============================================================================
-
 if __name__ == "__main__":
 
-    print("""
-╔════════════════════════════════════════════════════════════════════╗
-║                  AQI PREDICTION MODEL TRAINING                     ║
-║                                                                    ║
-║  This script will:                                                ║
-║  1. ✓ Fetch data from Hopsworks Feature Store                     ║
-║  2. ✓ Prepare and split data (70/10/20)                          ║
-║  3. ✓ Train 3 ML models (RF, GBM, XGBoost)                       ║
-║  4. ✓ Register models in Hopsworks Model Registry                ║
-╚════════════════════════════════════════════════════════════════════╝
-    """)
-
+  
     # Check API key
     if not os.getenv("HOPSWORKS_API_KEY"):
-        print("❌ ERROR: HOPSWORKS_API_KEY not set!")
+        print(" ERROR: HOPSWORKS_API_KEY not set!")
         print("   Set it with: os.environ['HOPSWORKS_API_KEY'] = 'your_key'")
         exit(1)
 
@@ -438,14 +403,14 @@ if __name__ == "__main__":
     )
 
     if df is None:
-        print("❌ Failed to fetch data. Exiting...")
+        print("Failed to fetch data. Exiting...")
         exit(1)
 
     # Step 2: Prepare data
     data = prepare_data(df, target='aqi')
 
     if data is None:
-        print("❌ Failed to prepare data. Exiting...")
+        print(" Failed to prepare data. Exiting...")
         exit(1)
 
     # Step 3: Train models
@@ -456,15 +421,15 @@ if __name__ == "__main__":
 
     # Final summary
     print("\n" + "="*70)
-    print("🎉 PIPELINE COMPLETE!")
+    print(" PIPELINE COMPLETE!")
     print("="*70)
-    print("\n✅ Summary:")
+    print("\n Summary:")
     print(f"   • Data fetched: {len(df)} rows")
     print(f"   • Features used: {len(data['feature_names'])}")
     print(f"   • Models trained: {len(results)}")
     print(f"   • Models registered: {len(registered_models) if registered_models else 0}")
 
-    print("\n📊 Model Performance (Test Set):")
+    print("\n Model Performance (Test Set):")
     print(comparison.to_string(index=False))
 
     print("\n" + "="*70)
