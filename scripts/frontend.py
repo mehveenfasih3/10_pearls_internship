@@ -1,400 +1,323 @@
-"""
-🌍 AQI PREDICTION DASHBOARD - NEXT 3 DAYS FORECAST
-===================================================
-Automatically predicts next 3 days (72 hours) of AQI without user input
-Uses latest data from Hopsworks Feature Store
-"""
+HOPSWORKS_API_KEY = "GqA1WvugxU2aQHq6.1bJMxQU6Urym9vW74s5v6r2xungp1QU3MaiWKB0JrcN4JX5mjfLSry2fqu0OWYe7"
 
-# ============================================================================
-# STEP 1: CONFIGURATION
-# ============================================================================
+
 
 import os
-os.environ["HOPSWORKS_API_KEY"] = HOPSWORKS_API_KEY # CHANGE THIS!
 
-# ============================================================================
-# STEP 2: INSTALL DEPENDENCIES
-# ============================================================================
-print("📦 Installing dependencies...")
-# !pip install -q gradio hopsworks hsml pandas numpy joblib scikit-learn xgboost plotly
+if not HOPSWORKS_API_KEY:
+    raise ValueError(" ERROR: HOPSWORKS_API_KEY not found in environment.\n"
+                     " Set it using:\n"
+                     "   export HOPSWORKS_API_KEY=your_key_here")
 
-print("✅ Installation complete!\n")
+os.environ["HOPSWORKS_API_KEY"] = HOPSWORKS_API_KEY
 
-# ============================================================================
-# STEP 3: IMPORT LIBRARIES
-# ============================================================================
-import gradio as gr
+
 import pandas as pd
 import numpy as np
+import os
 import json
+from datetime import datetime, timedelta
 import joblib
-import hopsworks
+import warnings
+warnings.filterwarnings('ignore')
+
+import gradio as gr
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
-from datetime import datetime, timedelta
 
-print("✅ Libraries imported!\n")
-
-# ============================================================================
-# STEP 4: LOAD MODELS FROM HOPSWORKS
-# ============================================================================
-print("="*70)
-print("LOADING MODELS FROM HOPSWORKS MODEL REGISTRY")
-print("="*70)
-
-def load_model_from_hopsworks(model_name):
-    """Load a single model from Hopsworks"""
+def load_models_from_hopsworks():
+    """Load all trained models from Hopsworks Model Registry"""
+    print("\n" + "="*70)
+    print("LOADING MODELS FROM HOPSWORKS")
+    print("="*70)
+    
     try:
-        project = hopsworks.login(api_key_value=os.getenv("HOPSWORKS_API_KEY"))
+        import hopsworks
+        
+      
+        try:
+            import xgboost
+            print("\n XGBoost already installed")
+        except ImportError:
+            print("\n XGBoost not found. Installing...")
+            import subprocess
+            subprocess.check_call(['pip', 'install', '-q', 'xgboost'])
+            print(" XGBoost installed successfully")
+        
+        print("\nConnecting to Hopsworks...")
+        project = hopsworks.login(
+            project="mehveenf",
+            api_key_value=os.getenv("HOPSWORKS_API_KEY")
+        )
         mr = project.get_model_registry()
-
-        print(f"📥 Loading {model_name}...")
-
-        model_obj = mr.get_model(model_name)
-        model_dir = model_obj.download()
-        model_key = model_name.replace('aqi_', '')
-
-        model = joblib.load(f"{model_dir}/{model_key}_model.pkl")
-        scaler = joblib.load(f"{model_dir}/{model_key}_scaler.pkl")
-
-        with open(f"{model_dir}/{model_key}_features.json", 'r') as f:
-            features = json.load(f)['features']
-
-        with open(f"{model_dir}/{model_key}_metrics.json", 'r') as f:
-            metrics = json.load(f)
-
-        print(f"   ✓ Loaded! R² = {metrics.get('test_r2', 0):.4f}, RMSE = {metrics.get('test_rmse', 0):.2f}")
-
-        return {
-            'model': model,
-            'scaler': scaler,
-            'features': features,
-            'metrics': metrics
-        }
+        
+        models = {}
+        model_names = ['aqi_gradient_boosting', 'aqi_random_forest', 'aqi_xgboost']
+        
+        for model_name in model_names:
+            try:
+                print(f"\n Loading {model_name}...")
+                model = mr.get_model(model_name, version=1)
+                model_dir = model.download()
+                
+                # Extract model type
+                model_type = "_".join(model_name.split("_")[1:])
+                
+                # Load artifacts
+                regressor = joblib.load(f"{model_dir}/{model_type}_model.pkl")
+                scaler = joblib.load(f"{model_dir}/{model_type}_scaler.pkl")
+                
+                with open(f"{model_dir}/{model_type}_features.json", 'r') as f:
+                    features = json.load(f)['features']
+                
+                with open(f"{model_dir}/{model_type}_metrics.json", 'r') as f:
+                    metrics = json.load(f)
+                
+                models[model_type] = {
+                    'regressor': regressor,
+                    'scaler': scaler,
+                    'features': features,
+                    'metrics': metrics,
+                    'name': model_name
+                }
+                
+                print(f"Loaded {model_name}")
+                print(f"   R² Score: {metrics['test_r2']:.4f}")
+                print(f"   RMSE: {metrics['test_rmse']:.2f}")
+                print(f"   MAE: {metrics['test_mae']:.2f}")
+                
+            except Exception as e:
+                print(f"Failed to load {model_name}: {str(e)}")
+                continue
+        
+        if not models:
+            raise Exception("No models loaded successfully!")
+        
+        # Find best model
+        best_model = max(models.items(), key=lambda x: x[1]['metrics']['test_r2'])
+        best_name = best_model[0]
+        best_r2 = best_model[1]['metrics']['test_r2']
+        
+        print("\n" + "="*70)
+        print(f"Successfully loaded {len(models)} models")
+        print(f" BEST MODEL: {best_name.replace('_', ' ').title()} (R² = {best_r2:.4f})")
+        print("="*70)
+        
+        return models, best_name
+        
     except Exception as e:
-        print(f"   ❌ Error: {str(e)}")
-        return None
+        print(f"\n ERROR: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return None, None
 
-# Load all three models
-print("\n🤖 Loading all 3 models...\n")
 
-MODELS = {
-    'gradient_boosting': load_model_from_hopsworks('aqi_gradient_boosting'),
-    'xgboost': load_model_from_hopsworks('aqi_xgboost'),
-    'random_forest': load_model_from_hopsworks('aqi_random_forest')
-}
 
-if not all(MODELS.values()):
-    print("\n❌ FAILED TO LOAD MODELS!")
-    print("Please check your API key and ensure models exist in Hopsworks")
-    import sys
-    sys.exit(1)
-
-print("\n✅ ALL MODELS LOADED SUCCESSFULLY!")
-print("="*70)
-
-# ============================================================================
-# STEP 5: FETCH LATEST DATA FROM HOPSWORKS
-# ============================================================================
-
-def get_latest_data_from_hopsworks():
-    """
-    Fetch the most recent data from Hopsworks Feature Store
-    This will be used as the starting point for predictions
-    """
+def fetch_latest_data():
+    """Fetch the most recent data from Hopsworks Feature Store"""
     try:
-        project = hopsworks.login(api_key_value=os.getenv("HOPSWORKS_API_KEY"))
+        import hopsworks
+        
+        project = hopsworks.login(
+            project="mehveenf",
+            api_key_value=os.getenv("HOPSWORKS_API_KEY")
+        )
         fs = project.get_feature_store()
         
-        print("\n📥 Fetching latest data from Feature Store...")
+        fg = fs.get_feature_group(name="air_quality_features", version=1)
+        df = fg.read()
         
-        feature_group = fs.get_feature_group(name="air_quality_features", version=1)
-        df = feature_group.read()
+       
+        df = df.sort_values('datetime_utc', ascending=False)
+        latest = df.iloc[0]
         
-        # Convert datetime if needed
-        if 'datetime_utc' in df.columns:
-            if not pd.api.types.is_datetime64_any_dtype(df['datetime_utc']):
-                df['datetime_utc'] = pd.to_datetime(df['datetime_utc'], unit='ms')
-        
-        # Sort and get latest record
-        df = df.sort_values('datetime_utc')
-        latest = df.iloc[-1].to_dict()
-        
-        print(f"   ✓ Latest data from: {latest['datetime_utc']}")
-        
-        return latest, df
+        return latest
         
     except Exception as e:
-        print(f"   ⚠️  Could not load from Hopsworks: {str(e)}")
-        print("   📊 Using fallback data...")
-        
-        # Fallback: Use sample data based on typical patterns
-        now = datetime.now()
-        latest = {
-            'datetime_utc': now,
-            'pm2_5': 64.37,
-            'pm10': 94.1,
-            'co': 867.84,
-            'no2': 38.73,
-            'o3': 95.84,
-            'so2': 23.13,
-            'no': 0.06,
-            'nh3': 4.75
-        }
-        return latest, None
+        print(f"Error fetching data: {str(e)}")
+        return None
 
-# Get latest data
-latest_data, historical_df = get_latest_data_from_hopsworks()
 
-# ============================================================================
-# STEP 6: PREDICT NEXT 3 DAYS (72 HOURS)
-# ============================================================================
 
-def predict_next_3_days(latest_data):
-    """
-    Predict next 72 hours (3 days) of AQI values
-    Uses latest pollutant concentrations with time-varying patterns
-    """
-    print("\n🔮 Generating 72-hour forecast...")
+def generate_forecast_from_today(models, latest_data, best_model_name):
+    """Generate forecast from current date + next 3 days (4 days total = 96 hours)"""
     
-    predictions = {
-        'datetime': [],
-        'gradient_boosting': [],
-        'xgboost': [],
-        'random_forest': []
-    }
+   
+    exclude_cols = ['id', 'datetime_utc', 'aqi', 'aqi_category', 'dominant_pollutant']
+    exclude_cols += [col for col in latest_data.index if col.startswith('aqi_') and col != 'aqi']
     
-    # Starting point
-    start_time = pd.to_datetime(latest_data['datetime_utc'])
+   
+    base_features = {k: v for k, v in latest_data.items() if k not in exclude_cols}
     
-    # Base pollutant values from latest data
-    base_pm25 = latest_data.get('pm2_5', 64.37)
-    base_pm10 = latest_data.get('pm10', 94.1)
-    base_co = latest_data.get('co', 867.84)
-    base_no2 = latest_data.get('no2', 38.73)
-    base_o3 = latest_data.get('o3', 95.84)
-    base_so2 = latest_data.get('so2', 23.13)
     
-    # Predict for next 72 hours
-    for i in range(72):
-        # Current timestamp
-        current_time = start_time + timedelta(hours=i+1)
-        predictions['datetime'].append(current_time)
+    current_time = datetime.now()
+    
+    print(f"\n Current Date/Time: {current_time.strftime('%Y-%m-%d %H:%M')}")
+    print(f" Forecasting: Today + Next 3 Days (96 hours)")
+    print(f" End Date: {(current_time + timedelta(hours=96)).strftime('%Y-%m-%d %H:%M')}")
+    
+    # Initialize results
+    results = []
+    
+    
+    for hour in range(96):
+        forecast_time = current_time + timedelta(hours=hour)
         
-        hour = current_time.hour
-        month = current_time.month
-        day_of_week = current_time.weekday()
         
-        # Apply time-based variations (diurnal patterns)
-        # Morning rush hour (6-9 AM): Higher pollution
-        # Evening rush hour (5-8 PM): Higher pollution
-        # Night (11 PM - 5 AM): Lower pollution
+        current_features = base_features.copy()
+        current_features['month'] = float(forecast_time.month)
+        if 'hour' in current_features:
+            current_features['hour'] = float(forecast_time.hour)
+        if 'day_of_week' in current_features:
+            current_features['day_of_week'] = float(forecast_time.weekday())
         
-        time_factor = 1.0
-        if 6 <= hour <= 9:  # Morning rush
-            time_factor = 1.3
-        elif 17 <= hour <= 20:  # Evening rush
-            time_factor = 1.4
-        elif 23 <= hour or hour <= 5:  # Night
-            time_factor = 0.7
-        else:
-            time_factor = 1.0
         
-        # Weekend factor (lower traffic pollution)
-        if day_of_week >= 5:  # Saturday=5, Sunday=6
-            time_factor *= 0.85
+        predictions = {}
         
-        # Seasonal variation
-        season_factor = 1.0
-        if month in [12, 1, 2]:  # Winter - higher pollution
-            season_factor = 1.2
-        elif month in [6, 7, 8]:  # Summer - moderate
-            season_factor = 1.0
-        elif month in [3, 4, 5]:  # Spring - cleaner
-            season_factor = 0.9
-        else:  # Fall
-            season_factor = 1.1
-        
-        # Add some realistic variation
-        noise = np.random.uniform(0.9, 1.1)
-        
-        # Calculate pollutant concentrations
-        pm25 = base_pm25 * time_factor * season_factor * noise
-        pm10 = base_pm10 * time_factor * season_factor * noise
-        co = base_co * time_factor * season_factor * noise
-        no2 = base_no2 * time_factor * season_factor * noise
-        o3 = base_o3 * (2 - time_factor) * noise  # O3 is inverse (higher during day)
-        so2 = base_so2 * time_factor * season_factor * noise
-        
-        # Prepare input data
-        input_data = {
-            'pm2_5': max(0, pm25),
-            'pm10': max(0, pm10),
-            'co': max(0, co),
-            'no2': max(0, no2),
-            'o3': max(0, o3),
-            'so2': max(0, so2),
-            'hour': hour,
-            'month': month,
-            'day_of_week': day_of_week,
-            'pm_ratio': pm25 / (pm10 + 0.001),
-            'total_pm': pm25 + pm10
-        }
-        
-        # Make predictions with all three models
-        for model_key, model_data in MODELS.items():
-            if model_data is None:
-                continue
+        for model_key, model_data in models.items():
+            try:
+                # Create input DataFrame
+                input_df = pd.DataFrame([{
+                    feat: current_features.get(feat, 0.0) 
+                    for feat in model_data['features']
+                }])
                 
-            model = model_data['model']
-            scaler = model_data['scaler']
-            features = model_data['features']
-            
-            # Create DataFrame
-            input_df = pd.DataFrame([input_data])
-            
-            # Ensure all features are present
-            for feature in features:
-                if feature not in input_df.columns:
-                    input_df[feature] = 0
-            
-            # Make prediction
-            X = input_df[features].values
-            X_scaled = scaler.transform(X)
-            pred_aqi = model.predict(X_scaled)[0]
-            
-            predictions[model_key].append(float(pred_aqi))
-    
-    print(f"   ✓ Generated {len(predictions['datetime'])} hourly predictions")
-    
-    return predictions
-
-# Generate predictions
-predictions = predict_next_3_days(latest_data)
-
-# ============================================================================
-# STEP 7: HELPER FUNCTIONS
-# ============================================================================
-
-def get_aqi_category(aqi_value):
-    """Get AQI category and color"""
-    if aqi_value <= 50:
-        return 'Good', '#00e400', '😊'
-    elif aqi_value <= 100:
-        return 'Moderate', '#ffff00', '😐'
-    elif aqi_value <= 150:
-        return 'Unhealthy for Sensitive', '#ff7e00', '😷'
-    elif aqi_value <= 200:
-        return 'Unhealthy', '#ff0000', '😨'
-    elif aqi_value <= 300:
-        return 'Very Unhealthy', '#8f3f97', '😰'
-    else:
-        return 'Hazardous', '#7e0023', '☠️'
-
-def analyze_overfitting():
-    """Analyze overfitting status"""
-    analysis = []
-    
-    for model_key, model_data in MODELS.items():
-        if model_data is None:
-            continue
+                # Scale and predict
+                input_scaled = model_data['scaler'].transform(input_df)
+                pred = model_data['regressor'].predict(input_scaled)[0]
+                pred = np.clip(pred, 0, 500)
+                
+                predictions[model_key] = pred
+                
+            except Exception as e:
+                predictions[model_key] = np.nan
         
-        metrics = model_data['metrics']
-        test_r2 = metrics.get('test_r2', 0)
-        test_rmse = metrics.get('test_rmse', 0)
+       
+        valid_preds = [p for p in predictions.values() if not np.isnan(p)]
+        ensemble = np.mean(valid_preds) if valid_preds else np.nan
         
-        # Overfitting assessment based on 75-90% rule
-        if test_r2 > 0.90:
-            status = "⚠️ POSSIBLE OVERFITTING"
-            recommendation = "R² > 90% may indicate overfitting. Monitor on new data."
-            color = "orange"
-        elif test_r2 >= 0.75:
-            status = "✅ EXCELLENT"
-            recommendation = "Optimal performance range (75-90%). No overfitting."
-            color = "green"
-        elif test_r2 >= 0.65:
-            status = "✅ GOOD"
-            recommendation = "Acceptable performance, well-generalized."
-            color = "blue"
-        else:
-            status = "⚠️ UNDERFITTING"
-            recommendation = "Model needs improvement."
-            color = "red"
-        
-        analysis.append({
-            'model': model_key.replace('_', ' ').title(),
-            'test_r2': test_r2,
-            'test_rmse': test_rmse,
-            'status': status,
-            'recommendation': recommendation,
-            'color': color
+       
+        results.append({
+            'datetime': forecast_time,
+            'date': forecast_time.strftime('%Y-%m-%d'),
+            'time': forecast_time.strftime('%H:%M'),
+            'day_name': forecast_time.strftime('%A'),
+            'hour_of_day': forecast_time.hour,
+            **predictions,
+            'ensemble': ensemble,
+            'best_model': predictions.get(best_model_name, np.nan)
         })
     
-    return analysis
-
-# ============================================================================
-# STEP 8: CREATE VISUALIZATIONS
-# ============================================================================
-
-def create_forecast_dashboard():
-    """
-    Create complete dashboard with all visualizations
-    """
-    # Convert predictions to DataFrame
-    df_pred = pd.DataFrame(predictions)
-    df_pred['datetime'] = pd.to_datetime(df_pred['datetime'])
-    df_pred['date_str'] = df_pred['datetime'].dt.strftime('%b %d')
-    df_pred['time_str'] = df_pred['datetime'].dt.strftime('%H:%M')
-    df_pred['hour'] = df_pred['datetime'].dt.hour
-    df_pred['day'] = df_pred['datetime'].dt.date
+    df = pd.DataFrame(results)
+    print(f" Generated {len(df)} hourly predictions")
+    print(f"   From: {df['datetime'].min().strftime('%Y-%m-%d %H:%M')}")
+    print(f"   To:   {df['datetime'].max().strftime('%Y-%m-%d %H:%M')}")
     
-    # ============================================================================
-    # CHART 1: TIME SERIES - 72 HOURS FORECAST
-    # ============================================================================
+    return df
+
+
+
+def create_forecast_visualization(df_forecast, models, best_model_name):
+    """Create comprehensive forecast visualization with model comparison"""
     
-    fig_timeseries = go.Figure()
+   
+    fig = make_subplots(
+        rows=2, cols=1,
+        row_heights=[0.7, 0.3],
+        subplot_titles=(
+            '4-Day AQI Forecast (Today + Next 3 Days)',
+            'Model Performance Comparison'
+        ),
+        vertical_spacing=0.12
+    )
+    
     
     colors = {
-        'gradient_boosting': '#3b82f6',
-        'xgboost': '#10b981',
-        'random_forest': '#f59e0b'
+        'gradient_boosting': '#1f77b4',
+        'random_forest': '#ff7f0e',
+        'xgboost': '#2ca02c',
+        'ensemble': '#d62728',
+        'best_model': '#9467bd'
     }
     
-    model_names = {
-        'gradient_boosting': 'Gradient Boosting (R²=0.94)',
-        'xgboost': 'XGBoost (R²=0.83)',
-        'random_forest': 'Random Forest (R²=0.71)'
-    }
+   
+    for model_key in models.keys():
+        if model_key in df_forecast.columns:
+            is_best = (model_key == best_model_name)
+            
+            fig.add_trace(go.Scatter(
+                x=df_forecast['datetime'],
+                y=df_forecast[model_key],
+                mode='lines',
+                name=f"{model_key.replace('_', ' ').title()}" + (" " if is_best else ""),
+                line=dict(
+                    color=colors.get(model_key, '#999'),
+                    width=4 if is_best else 2,
+                    dash='solid' if is_best else 'dash'
+                ),
+                opacity=1.0 if is_best else 0.4,
+                legendgroup=model_key,
+                hovertemplate='<b>%{fullData.name}</b><br>' +
+                             '%{x|%b %d, %H:%M}<br>' +
+                             'AQI: <b>%{y:.1f}</b><br>' +
+                             '<extra></extra>'
+            ), row=1, col=1)
     
-    for model_key, color in colors.items():
-        fig_timeseries.add_trace(go.Scatter(
-            x=df_pred['datetime'],
-            y=df_pred[model_key],
-            name=model_names[model_key],
-            mode='lines+markers',
-            line=dict(width=2, color=color),
-            marker=dict(size=4),
-            hovertemplate='<b>%{fullData.name}</b><br>Time: %{x|%b %d, %H:%M}<br>AQI: %{y:.1f}<extra></extra>'
-        ))
     
-    # Add AQI category zones
-    fig_timeseries.add_hrect(y0=0, y1=50, fillcolor="green", opacity=0.1, line_width=0, 
-                             annotation_text="Good", annotation_position="left")
-    fig_timeseries.add_hrect(y0=50, y1=100, fillcolor="yellow", opacity=0.1, line_width=0,
-                             annotation_text="Moderate", annotation_position="left")
-    fig_timeseries.add_hrect(y0=100, y1=150, fillcolor="orange", opacity=0.1, line_width=0,
-                             annotation_text="Unhealthy", annotation_position="left")
-    fig_timeseries.add_hrect(y0=150, y1=200, fillcolor="red", opacity=0.1, line_width=0)
+    if 'ensemble' in df_forecast.columns:
+        fig.add_trace(go.Scatter(
+            x=df_forecast['datetime'],
+            y=df_forecast['ensemble'],
+            mode='lines',
+            name='Ensemble Avg',
+            line=dict(color=colors['ensemble'], width=3),
+            legendgroup='ensemble',
+            hovertemplate='<b>Ensemble Average</b><br>' +
+                         '%{x|%b %d, %H:%M}<br>' +
+                         'AQI: <b>%{y:.1f}</b><br>' +
+                         '<extra></extra>'
+        ), row=1, col=1)
     
-    fig_timeseries.update_layout(
-        title={
-            'text': '📈 Next 3 Days AQI Forecast (72 Hours)',
-            'font': {'size': 24, 'color': '#1e3a8a', 'family': 'Arial Bold'}
-        },
-        xaxis_title='Date & Time',
-        yaxis_title='AQI Value',
-        height=500,
+   
+    fig.add_hrect(y0=0, y1=50, fillcolor="green", opacity=0.1, line_width=0, row=1, col=1)
+    fig.add_hrect(y0=50, y1=100, fillcolor="yellow", opacity=0.1, line_width=0, row=1, col=1)
+    fig.add_hrect(y0=100, y1=150, fillcolor="orange", opacity=0.1, line_width=0, row=1, col=1)
+    fig.add_hrect(y0=150, y1=200, fillcolor="red", opacity=0.1, line_width=0, row=1, col=1)
+    fig.add_hrect(y0=200, y1=300, fillcolor="purple", opacity=0.1, line_width=0, row=1, col=1)
+    
+    model_scores = []
+    model_names = []
+    model_colors_list = []
+    
+    for model_key, model_data in models.items():
+        model_names.append(model_key.replace('_', ' ').title() + (" " if model_key == best_model_name else ""))
+        model_scores.append(model_data['metrics']['test_r2'])
+        model_colors_list.append(colors.get(model_key, '#999'))
+    
+    fig.add_trace(go.Bar(
+        x=model_names,
+        y=model_scores,
+        marker_color=model_colors_list,
+        text=[f"R²={score:.4f}" for score in model_scores],
+        textposition='outside',
+        name='R² Score',
+        showlegend=False,
+        hovertemplate='<b>%{x}</b><br>' +
+                     'R² Score: <b>%{y:.4f}</b><br>' +
+                     '<extra></extra>'
+    ), row=2, col=1)
+    
+   
+    fig.update_xaxes(title_text="Date & Time", row=1, col=1, tickformat='%b %d<br>%H:%M')
+    fig.update_yaxes(title_text="AQI", row=1, col=1)
+    
+    fig.update_xaxes(title_text="Model", row=2, col=1)
+    fig.update_yaxes(title_text="R² Score", row=2, col=1, range=[0, 1])
+    
+    fig.update_layout(
+        height=900,
         hovermode='x unified',
+        template='plotly_white',
         legend=dict(
             orientation="h",
             yanchor="bottom",
@@ -402,433 +325,299 @@ def create_forecast_dashboard():
             xanchor="right",
             x=1
         ),
-        template='plotly_white',
-        font=dict(size=12)
+        margin=dict(l=60, r=60, t=80, b=60)
     )
     
-    # ============================================================================
-    # CHART 2: DAILY AVERAGE COMPARISON
-    # ============================================================================
+    return fig
+
+
+
+def create_detailed_stats(df_forecast, models, best_model_name):
+    """Create detailed statistics table for ALL models"""
     
-    daily_avg = df_pred.groupby('day')[['gradient_boosting', 'xgboost', 'random_forest']].mean().reset_index()
-    daily_avg['day_str'] = pd.to_datetime(daily_avg['day']).dt.strftime('%A, %b %d')
+    # Get unique dates
+    unique_dates = df_forecast['date'].unique()
     
-    fig_daily = go.Figure()
+    stats = []
     
-    for model_key, color in colors.items():
-        fig_daily.add_trace(go.Bar(
-            x=daily_avg['day_str'],
-            y=daily_avg[model_key],
-            name=model_names[model_key],
-            marker_color=color,
-            text=daily_avg[model_key].round(1),
-            textposition='outside'
-        ))
+    # Get all model keys
+    model_keys = list(models.keys())
     
-    fig_daily.update_layout(
-        title={
-            'text': '📊 Daily Average AQI Forecast',
-            'font': {'size': 24, 'color': '#1e3a8a', 'family': 'Arial Bold'}
-        },
-        xaxis_title='Day',
-        yaxis_title='Average AQI',
-        height=400,
-        barmode='group',
-        template='plotly_white',
-        font=dict(size=12)
-    )
+    # Overall stats for each model
+    for model_key in model_keys:
+        if model_key in df_forecast.columns:
+            is_best = (model_key == best_model_name)
+            model_display_name = model_key.replace('_', ' ').title() + (" 🏆" if is_best else "")
+            
+            stats.append({
+                'Model': model_display_name,
+                'Period': 'OVERALL (96h)',
+                'Avg AQI': f"{df_forecast[model_key].mean():.1f}",
+                'Max AQI': f"{df_forecast[model_key].max():.1f}",
+                'Min AQI': f"{df_forecast[model_key].min():.1f}",
+                'Std Dev': f"{df_forecast[model_key].std():.1f}"
+            })
     
-    # ============================================================================
-    # CHART 3: HOURLY PATTERN (AVERAGE BY HOUR OF DAY)
-    # ============================================================================
-    
-    hourly_avg = df_pred.groupby('hour')[['gradient_boosting', 'xgboost', 'random_forest']].mean().reset_index()
-    
-    fig_hourly = go.Figure()
-    
-    for model_key, color in colors.items():
-        fig_hourly.add_trace(go.Scatter(
-            x=hourly_avg['hour'],
-            y=hourly_avg[model_key],
-            name=model_names[model_key],
-            mode='lines+markers',
-            line=dict(width=3, color=color),
-            marker=dict(size=8)
-        ))
-    
-    fig_hourly.update_layout(
-        title={
-            'text': '⏰ Average AQI by Hour of Day',
-            'font': {'size': 24, 'color': '#1e3a8a', 'family': 'Arial Bold'}
-        },
-        xaxis_title='Hour of Day',
-        yaxis_title='Average AQI',
-        height=400,
-        template='plotly_white',
-        font=dict(size=12),
-        xaxis=dict(tickmode='linear', tick0=0, dtick=2)
-    )
-    
-    # ============================================================================
-    # CHART 4: MODEL COMPARISON STATISTICS
-    # ============================================================================
-    
-    stats_data = []
-    for model_key in ['gradient_boosting', 'xgboost', 'random_forest']:
-        values = df_pred[model_key].values
-        stats_data.append({
-            'Model': model_names[model_key],
-            'Mean': np.mean(values),
-            'Min': np.min(values),
-            'Max': np.max(values),
-            'Std Dev': np.std(values)
+    # Add ensemble overall
+    if 'ensemble' in df_forecast.columns:
+        stats.append({
+            'Model': 'Ensemble Avg',
+            'Period': 'OVERALL (96h)',
+            'Avg AQI': f"{df_forecast['ensemble'].mean():.1f}",
+            'Max AQI': f"{df_forecast['ensemble'].max():.1f}",
+            'Min AQI': f"{df_forecast['ensemble'].min():.1f}",
+            'Std Dev': f"{df_forecast['ensemble'].std():.1f}"
         })
     
-    df_stats = pd.DataFrame(stats_data)
+    # Add separator row
+    stats.append({
+        'Model': '─' * 20,
+        'Period': '─' * 15,
+        'Avg AQI': '─' * 8,
+        'Max AQI': '─' * 8,
+        'Min AQI': '─' * 8,
+        'Std Dev': '─' * 8
+    })
     
-    fig_stats = go.Figure(data=[
-        go.Bar(name='Mean AQI', x=df_stats['Model'], y=df_stats['Mean'], 
-               marker_color='#3b82f6', text=df_stats['Mean'].round(1), textposition='outside'),
-        go.Bar(name='Std Dev', x=df_stats['Model'], y=df_stats['Std Dev'], 
-               marker_color='#10b981', text=df_stats['Std Dev'].round(1), textposition='outside')
-    ])
+    # Daily stats for each model
+    for date in unique_dates:
+        day_data = df_forecast[df_forecast['date'] == date]
+        day_name = day_data.iloc[0]['day_name']
+        period_label = f"{date} ({day_name})"
+        
+        for model_key in model_keys:
+            if model_key in df_forecast.columns:
+                is_best = (model_key == best_model_name)
+                model_display_name = model_key.replace('_', ' ').title() + (" " if is_best else "")
+                
+                stats.append({
+                    'Model': model_display_name,
+                    'Period': period_label,
+                    'Avg AQI': f"{day_data[model_key].mean():.1f}",
+                    'Max AQI': f"{day_data[model_key].max():.1f}",
+                    'Min AQI': f"{day_data[model_key].min():.1f}",
+                    'Std Dev': f"{day_data[model_key].std():.1f}"
+                })
+        
+        # Add ensemble for this day
+        if 'ensemble' in df_forecast.columns:
+            stats.append({
+                'Model': 'Ensemble Avg',
+                'Period': period_label,
+                'Avg AQI': f"{day_data['ensemble'].mean():.1f}",
+                'Max AQI': f"{day_data['ensemble'].max():.1f}",
+                'Min AQI': f"{day_data['ensemble'].min():.1f}",
+                'Std Dev': f"{day_data['ensemble'].std():.1f}"
+            })
+        
+        # Add separator after each day
+        if date != unique_dates[-1]:  # Don't add separator after last day
+            stats.append({
+                'Model': '─' * 20,
+                'Period': '─' * 15,
+                'Avg AQI': '─' * 8,
+                'Max AQI': '─' * 8,
+                'Min AQI': '─' * 8,
+                'Std Dev': '─' * 8
+            })
     
-    fig_stats.update_layout(
-        title={
-            'text': '📊 Model Statistics Comparison',
-            'font': {'size': 24, 'color': '#1e3a8a', 'family': 'Arial Bold'}
-        },
-        xaxis_title='Model',
-        yaxis_title='Value',
-        height=400,
-        barmode='group',
-        template='plotly_white',
-        font=dict(size=12)
-    )
-    
-    # ============================================================================
-    # CHART 5: OVERFITTING ANALYSIS
-    # ============================================================================
-    
-    overfit_data = analyze_overfitting()
-    
-    fig_overfit = go.Figure()
-    
-    models_list = [d['model'] for d in overfit_data]
-    r2_scores = [d['test_r2'] * 100 for d in overfit_data]
-    colors_overfit = [d['color'] for d in overfit_data]
-    
-    fig_overfit.add_trace(go.Bar(
-        x=models_list,
-        y=r2_scores,
-        marker_color=colors_overfit,
-        text=[f"{r2:.2f}%" for r2 in r2_scores],
-        textposition='outside'
-    ))
-    
-    # Reference lines
-    fig_overfit.add_hline(y=90, line_dash="dash", line_color="red", line_width=2,
-                          annotation_text="90% - Overfitting Risk Zone", 
-                          annotation_position="right")
-    fig_overfit.add_hline(y=75, line_dash="dash", line_color="green", line_width=2,
-                          annotation_text="75% - Optimal Range Start", 
-                          annotation_position="right")
-    
-    fig_overfit.update_layout(
-        title={
-            'text': '🔍 Overfitting Analysis (R² Scores)',
-            'font': {'size': 24, 'color': '#1e3a8a', 'family': 'Arial Bold'}
-        },
-        xaxis_title='Model',
-        yaxis_title='R² Score (%)',
-        height=450,
-        yaxis_range=[0, 100],
-        template='plotly_white',
-        font=dict(size=12)
-    )
-    
-    # ============================================================================
-    # TEXT SUMMARIES
-    # ============================================================================
-    
-    # Current forecast summary
-    latest_pred = {
-        'gradient_boosting': predictions['gradient_boosting'][0],
-        'xgboost': predictions['xgboost'][0],
-        'random_forest': predictions['random_forest'][0]
-    }
-    
-    forecast_start = predictions['datetime'][0].strftime('%A, %B %d, %Y at %I:%M %p')
-    forecast_end = predictions['datetime'][-1].strftime('%A, %B %d, %Y at %I:%M %p')
-    
-    summary_text = f"""
-# 🌍 Next 3 Days AQI Forecast Summary
+    return pd.DataFrame(stats)
 
-**Forecast Period:**  
-📅 From: {forecast_start}  
-📅 To: {forecast_end}
 
-## 🎯 Next Hour Predictions
 
-"""
+def create_model_comparison_table(models, best_model_name):
+    """Create model performance comparison table"""
     
-    for model_key, aqi in latest_pred.items():
-        category, color, emoji = get_aqi_category(aqi)
-        model_name = model_names[model_key]
-        summary_text += f"### {emoji} {model_name}\n"
-        summary_text += f"- **AQI:** {aqi:.1f}\n"
-        summary_text += f"- **Category:** {category}\n\n"
+    comparison = []
     
-    # Overfitting report
-    overfit_report = """
-# 🔍 Overfitting Analysis Report
+    for model_key, model_data in models.items():
+        metrics = model_data['metrics']
+        is_best = (model_key == best_model_name)
+        
+        comparison.append({
+            'Model': model_key.replace('_', ' ').title() + ("  BEST" if is_best else ""),
+            'R² Score': f"{metrics['test_r2']:.4f}",
+            'RMSE': f"{metrics['test_rmse']:.2f}",
+            'MAE': f"{metrics['test_mae']:.2f}",
+            'MAPE (%)': f"{metrics['test_mape']:.2f}",
+            'Accuracy': f"{metrics['test_r2']*100:.2f}%"
+        })
+    
+    # Sort by R² descending
+    df = pd.DataFrame(comparison)
+    df = df.sort_values('R² Score', ascending=False)
+    
+    return df
 
-## Understanding Model Performance
 
-**Recommended Accuracy Range:** 75-90%
+def create_gradio_dashboard(models, best_model_name):
+    """Create comprehensive Gradio dashboard"""
+    
+    def generate_forecast():
+        """Generate and display forecast"""
+        try:
+           
+            print("\n Fetching latest data...")
+            latest_data = fetch_latest_data()
+            if latest_data is None:
+                return None, None, None, " Failed to fetch data from Hopsworks"
+            
+            print(f" Latest data from Feature Store: {latest_data['datetime_utc']}")
+            
+            # Generate forecast from TODAY
+            print("\n Generating forecast from current date...")
+            df_forecast = generate_forecast_from_today(models, latest_data, best_model_name)
+            
+            # Create visualizations
+            fig = create_forecast_visualization(df_forecast, models, best_model_name)
+            stats_df = create_detailed_stats(df_forecast, models, best_model_name)
+            model_comparison_df = create_model_comparison_table(models, best_model_name)
+            
+            # Create summary text
+            current_time = datetime.now()
+            end_time = current_time + timedelta(hours=96)
+            
+            best_model_metrics = models[best_model_name]['metrics']
+            
+            summary = f"""
+#  Forecast Summary
 
-- ✅ **75-90%**: Excellent, well-generalized model
-- ⚠️ **>90%**: Possible overfitting (may fail on new data)
-- ⚠️ **<65%**: Underfitting (needs improvement)
+##  Time Period
+- **Current Date/Time:** {current_time.strftime('%A, %B %d, %Y at %H:%M')}
+- **Forecast Coverage:** Today + Next 3 Days (4 days total)
+- **End Date/Time:** {end_time.strftime('%A, %B %d, %Y at %H:%M')}
+- **Total Hours:** 96 hours
 
 ---
 
-"""
-    
-    for analysis in overfit_data:
-        overfit_report += f"## {analysis['status']} {analysis['model']}\n\n"
-        overfit_report += f"- **R² Score:** {analysis['test_r2']:.4f} ({analysis['test_r2']*100:.2f}%)\n"
-        overfit_report += f"- **RMSE:** {analysis['test_rmse']:.2f}\n"
-        overfit_report += f"- **Assessment:** {analysis['recommendation']}\n\n"
-        overfit_report += "---\n\n"
-    
-    overfit_report += """
-## 🎯 Final Recommendation
+##  Best Model Selected
+**{best_model_name.replace('_', ' ').title()}**
 
-Based on the 75-90% rule:
+### Performance Metrics:
+- **R² Score:** {best_model_metrics['test_r2']:.4f} (explains {best_model_metrics['test_r2']*100:.2f}% of variance)
+- **RMSE:** {best_model_metrics['test_rmse']:.2f}
+- **MAE:** {best_model_metrics['test_mae']:.2f}
+- **MAPE:** {best_model_metrics['test_mape']:.2f}%
 
-1. **For Production Use:** ⭐ **XGBoost** (82.93%) - Best balance
-2. **For Baseline:** ✅ **Random Forest** (71.32%) - Reliable
-3. **Monitor Closely:** ⚠️ **Gradient Boosting** (94.45%) - High accuracy but potential overfitting
+This is the most accurate model based on test set performance.
 
-**Note:** Gradient Boosting shows excellent test performance but exceeds the 90% threshold.
-Validate on completely new data before production deployment.
-"""
+---
+
+## Key Predictions (Using Best Model)
+- **Average AQI (96h):** {df_forecast['best_model'].mean():.1f}
+- **Peak AQI:** {df_forecast['best_model'].max():.1f} at {df_forecast.loc[df_forecast['best_model'].idxmax(), 'datetime'].strftime('%b %d, %H:%M')}
+- **Best AQI:** {df_forecast['best_model'].min():.1f} at {df_forecast.loc[df_forecast['best_model'].idxmin(), 'datetime'].strftime('%b %d, %H:%M')}
+
+---
+
+*Dashboard updated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}*
+*Data source: Hopsworks Feature Store*
+            """
+            
+            return fig, stats_df, model_comparison_df, summary
+            
+        except Exception as e:
+            import traceback
+            error_msg = f" Error: {str(e)}\n\n{traceback.format_exc()}"
+            return None, None, None, error_msg
     
-    # Statistics table
-    stats_table = """
-# 📊 Detailed Statistics
-
-## Forecast Statistics (Next 72 Hours)
-
-"""
-    
-    stats_table += "| Model | Mean AQI | Min AQI | Max AQI | Std Dev | Test RMSE | R² Score |\n"
-    stats_table += "|-------|----------|---------|---------|---------|-----------|----------|\n"
-    
-    for idx, row in df_stats.iterrows():
-        model_key = list(colors.keys())[idx]
-        metrics = MODELS[model_key]['metrics']
-        rmse = metrics.get('test_rmse', 0)
-        r2 = metrics.get('test_r2', 0)
+    # Create interface
+    with gr.Blocks(title="4-Day AQI Forecast", theme=gr.themes.Soft()) as dashboard:
         
-        stats_table += f"| {row['Model']} | {row['Mean']:.1f} | {row['Min']:.1f} | {row['Max']:.1f} | {row['Std Dev']:.1f} | {rmse:.2f} | {r2:.4f} |\n"
+        gr.Markdown(f"""
+        #  Air Quality Forecast Dashboard
+        ### Karachi, Pakistan - Today + Next 3 Days
+        
+        Real-time predictions using the **best performing model**: **{best_model_name.replace('_', ' ').title()} **
+        """)
+        
+        with gr.Row():
+            refresh_btn = gr.Button(" Generate Forecast from Today", variant="primary", size="lg")
+        
+        gr.Markdown("---")
+        
+        with gr.Row():
+            summary_text = gr.Markdown()
+        
+        gr.Markdown("---")
+        
+        forecast_plot = gr.Plot(label="AQI Forecast & Model Comparison")
+        
+        gr.Markdown("---")
+        
+        with gr.Row():
+            with gr.Column(scale=1):
+                gr.Markdown("###  Daily Statistics (Best Model)")
+                stats_table = gr.Dataframe(label="", interactive=False)
+            
+            with gr.Column(scale=1):
+                gr.Markdown("###  Model Performance Comparison")
+                model_table = gr.Dataframe(label="", interactive=False)
+        
+        gr.Markdown("""
+        ---
+        ### AQI Categories
+        
+        | Range | Category | Health Impact |
+        |-------|----------|---------------|
+        | 0-50 | 🟢 Good | Air quality is satisfactory |
+        | 51-100 | 🟡 Moderate | Acceptable for most people |
+        | 101-150 | 🟠 Unhealthy (Sensitive) | Sensitive groups affected |
+        | 151-200 | 🔴 Unhealthy | Everyone may experience effects |
+        | 201-300 | 🟣 Very Unhealthy | Health alert |
+        | 301-500 | 🟤 Hazardous | Emergency conditions |
+        """)
+        
+        # Auto-load on page load
+        dashboard.load(
+            fn=generate_forecast,
+            inputs=None,
+            outputs=[forecast_plot, stats_table, model_table, summary_text]
+        )
+        
+        # Refresh button
+        refresh_btn.click(
+            fn=generate_forecast,
+            inputs=None,
+            outputs=[forecast_plot, stats_table, model_table, summary_text]
+        )
     
-    return (
-        fig_timeseries,
-        fig_daily,
-        fig_hourly,
-        fig_stats,
-        fig_overfit,
-        summary_text,
-        overfit_report,
-        stats_table
+    return dashboard
+
+
+if __name__ == "__main__":
+    
+  
+    
+    # Check API key
+    if not os.getenv("HOPSWORKS_API_KEY"):
+        print(" ERROR: HOPSWORKS_API_KEY not set!")
+        exit(1)
+    
+    # Load models and identify best one
+    models, best_model_name = load_models_from_hopsworks()
+    
+    if not models:
+        print(" Failed to load models. Exiting...")
+        exit(1)
+    
+    # Create dashboard
+    print("\n Creating dashboard...")
+    dashboard = create_gradio_dashboard(models, best_model_name)
+    print(" Dashboard created!")
+    
+    # Launch
+    print("\n" + "="*70)
+    print(" LAUNCHING FORECAST DASHBOARD")
+    print("="*70)
+    print(f"\n Best Model: {best_model_name.replace('_', ' ').title()}")
+    print(" Forecast: Today + Next 3 Days (96 hours)")
+    print(" Public URL will appear below")
+    print("="*70 + "\n")
+    
+    dashboard.launch(
+        server_name="0.0.0.0",
+        server_port=7860,
+        share=True,
+        show_error=True
     )
-
-# ============================================================================
-# STEP 9: CREATE GRADIO INTERFACE
-# ============================================================================
-
-print("\n🎨 Creating Gradio Dashboard...")
-
-custom_css = """
-.gradio-container {
-    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif !important;
-}
-.gr-button-primary {
-    background: linear-gradient(90deg, #1e3a8a 0%, #3b82f6 100%) !important;
-    border: none !important;
-    font-size: 18px !important;
-    font-weight: bold !important;
-}
-"""
-
-with gr.Blocks(css=custom_css, title="🌍 AQI Forecast Dashboard", theme=gr.themes.Soft()) as demo:
-    
-    gr.Markdown("""
-    # 🌍 Air Quality Index (AQI) - Next 3 Days Forecast
-    ## Automated 72-Hour Predictions Using ML Models
-    
-    **No input required!** This dashboard automatically generates predictions for the next 3 days
-    based on the latest data from Hopsworks Feature Store.
-    """)
-    
-    with gr.Row():
-        refresh_btn = gr.Button("🔄 Refresh Forecast", variant="primary", size="lg")
-        gr.Markdown(f"**Last Updated:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    
-    with gr.Tabs():
-        with gr.Tab("📈 72-Hour Forecast"):
-            forecast_summary = gr.Markdown()
-            plot_timeseries = gr.Plot(label="Time Series Forecast")
-        
-        with gr.Tab("📊 Daily Analysis"):
-            with gr.Row():
-                with gr.Column():
-                    plot_daily = gr.Plot(label="Daily Average")
-                with gr.Column():
-                    plot_hourly = gr.Plot(label="Hourly Pattern")
-        
-        with gr.Tab("📉 Model Comparison"):
-            plot_stats = gr.Plot(label="Statistics Comparison")
-            stats_table = gr.Markdown()
-        
-        with gr.Tab("🔍 Overfitting Analysis"):
-            plot_overfit = gr.Plot(label="Overfitting Check")
-            overfit_report = gr.Markdown()
-        
-        with gr.Tab("ℹ️ About"):
-            gr.Markdown("""
-## About This Dashboard
-
-### 🎯 Purpose
-This dashboard provides **automated 3-day AQI forecasts** without requiring any user input.
-It uses the latest air quality data and three machine learning models to predict future conditions.
-
-### 📊 Data Source
-- **Feature Store:** Hopsworks
-- **Forecast Horizon:** Next 72 hours (3 days)
-- **Update Frequency:** Real-time (click refresh)
-
-### 🤖 Models
-
-1. **Gradient Boosting Regressor**
-   - R² Score: 0.9445 (94.45%)
-   - Status: ⚠️ High accuracy, monitor for overfitting
-   - Best for: Short-term critical predictions
-
-2. **XGBoost Regressor** ⭐ **RECOMMENDED**
-   - R² Score: 0.8293 (82.93%)
-   - Status: ✅ Optimal range (75-90%)
-   - Best for: Production deployment
-
-3. **Random Forest Regressor**
-   - R² Score: 0.7132 (71.32%)
-   - Status: ✅ Reliable baseline
-   - Best for: Stable, conservative predictions
-
-### 🔍 Overfitting Detection
-
-This dashboard automatically checks for overfitting using the **75-90% accuracy rule**:
-
-- **75-90%**: ✅ Excellent generalization
-- **>90%**: ⚠️ Possible overfitting risk
-- **<65%**: ⚠️ Model needs improvement
-
-### 🌟 AQI Categories
-
-| Range | Category | Color | Description |
-|-------|----------|-------|-------------|
-| 0-50 | Good | 🟢 | Air quality is satisfactory |
-| 51-100 | Moderate | 🟡 | Acceptable for most people |
-| 101-150 | Unhealthy for Sensitive | 🟠 | Sensitive groups may be affected |
-| 151-200 | Unhealthy | 🔴 | Everyone may experience effects |
-| 201-300 | Very Unhealthy | 🟣 | Health alert |
-| 301-500 | Hazardous | 🟤 | Emergency conditions |
-
-### 📧 Contact
-For questions or issues, please contact the development team.
-
-### 🔄 How to Use
-1. Dashboard loads automatically with latest predictions
-2. Click "🔄 Refresh Forecast" to update predictions
-3. Switch between tabs to view different analyses
-4. All predictions are based on real data from Hopsworks
-
-### ⚙️ Technical Details
-- **Prediction Method:** Time-series forecasting with diurnal patterns
-- **Features Used:** PM2.5, PM10, CO, NO2, O3, SO2, temporal features
-- **Validation:** Cross-validated on historical data
-- **Deployment:** Real-time via Gradio + Hopsworks
-            """)
-    
-    # Function to refresh all visualizations
-    def refresh_dashboard():
-        """Refresh all predictions and visualizations"""
-        # Reload latest data
-        latest = get_latest_data_from_hopsworks()[0]
-        # Generate new predictions
-        new_predictions = predict_next_3_days(latest)
-        # Update global predictions
-        global predictions
-        predictions = new_predictions
-        # Create new visualizations
-        return create_forecast_dashboard()
-    
-    # Connect refresh button
-    refresh_btn.click(
-        fn=refresh_dashboard,
-        outputs=[
-            plot_timeseries,
-            plot_daily,
-            plot_hourly,
-            plot_stats,
-            plot_overfit,
-            forecast_summary,
-            overfit_report,
-            stats_table
-        ]
-    )
-    
-    # Auto-load dashboard on startup
-    demo.load(
-        fn=create_forecast_dashboard,
-        outputs=[
-            plot_timeseries,
-            plot_daily,
-            plot_hourly,
-            plot_stats,
-            plot_overfit,
-            forecast_summary,
-            overfit_report,
-            stats_table
-        ]
-    )
-
-print("✅ Dashboard created!\n")
-
-# ============================================================================
-# STEP 10: LAUNCH DASHBOARD
-# ============================================================================
-
-print("="*70)
-print("🚀 LAUNCHING AQI FORECAST DASHBOARD")
-print("="*70)
-print("\n✨ Your dashboard is starting...")
-print("📱 A public URL will appear below")
-print("🌐 Share this URL with anyone!")
-print("\n💡 Features:")
-print("   • Automatic 72-hour predictions")
-print("   • No user input required")
-print("   • Real-time updates from Hopsworks")
-print("   • Overfitting analysis")
-print("   • Multiple visualization types")
-print("="*70 + "\n")
-
-demo.launch(
-    share=True,
-    debug=False,
-    show_error=True,
-    server_name="0.0.0.0",
-    server_port=7860
-)
