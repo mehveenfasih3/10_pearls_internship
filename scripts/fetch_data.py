@@ -15,7 +15,7 @@ API_KEY = os.getenv("OPENWEATHER_API_KEY")
 os.makedirs("data", exist_ok=True)
 
 def fetch_data(start, end):
-    """Fetch air pollution data between two UNIX timestamps"""
+    """Fetch air pollution data"""
     url = f"http://api.openweathermap.org/data/2.5/air_pollution/history?lat={LAT}&lon={LON}&start={start}&end={end}&appid={API_KEY}"
     response = requests.get(url)
     if response.status_code != 200:
