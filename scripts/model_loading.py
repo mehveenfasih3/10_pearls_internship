@@ -416,7 +416,7 @@ if __name__ == "__main__":
     registered_models = register_models(results, data)
 
     # Final summary
-    print("\n" + "="*70)
+   
     print(" PIPELINE COMPLETE!")
     print("="*70)
     print("\n Summary:")
@@ -428,10 +428,4 @@ if __name__ == "__main__":
     print("\n Model Performance (Test Set):")
     print(comparison.to_string(index=False))
 
-    print("\n" + "="*70)
-    print("Next steps:")
-    print("1. Go to your Hopsworks project")
-    print("2. Navigate to Model Registry")
-    print("3. View your registered models: aqi_random_forest, aqi_gradient_boosting, aqi_xgboost")
-    print("4. Deploy the best model for predictions!")
-    print("="*70)
+ 
