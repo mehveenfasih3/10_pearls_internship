@@ -1009,17 +1009,10 @@ if __name__ == "__main__":
         selected_features_count=20
     )
 
-    print("\n" + "="*70)
+
     print("PART 2 COMPLETE - Ready for Model Training!")
     print("="*70)
-    print("\nNext steps:")
-    print("1. Data preprocessed and cleaned")
-    print("2. Comprehensive EDA performed")
-    print("3. Best features selected")
-    print("4. Data uploaded to Hopsworks Feature Store")
-    print("5. Ready for Part 3: Model Training & Deployment")
-
-    print("="*70)
+  
 
 
 
