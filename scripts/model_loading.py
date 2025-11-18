@@ -1,8 +1,4 @@
-"""
-Complete AQI Model Training Script
-===================================
-Fetches data from Hopsworks, trains 3 ML models, and registers them
-"""
+
 
 import pandas as pd
 import numpy as np
@@ -23,9 +19,9 @@ def fetch_data_from_hopsworks(feature_group_name="air_quality_features", version
     """
     Fetch data from Hopsworks Feature Store
     """
-    print("\n" + "="*70)
+
     print("FETCHING DATA FROM HOPSWORKS")
-    print("="*70)
+
 
     try:
         import hopsworks
@@ -62,9 +58,9 @@ def prepare_data(df, target='aqi'):
     """
     Prepare data for model training
     """
-    print("\n" + "="*70)
+   
     print("PREPARING DATA FOR TRAINING")
-    print("="*70)
+  
 
     # Check if target exists
     if target not in df.columns:
